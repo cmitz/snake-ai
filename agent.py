@@ -74,8 +74,9 @@ class Agent:
         print(f"Start position: {self.current_position}")
         print(f"New goal: ({self.current_goal_food.x}, {self.current_goal_food.y})")
 
-        node = self.a_star(board)
-        print(f"Child returned: {node}")
+        pos_ahead = self.position_ahead_from_snake(direction, self.current_position)
+
+        node = self.a_star(board, pos_ahead)
         route_reversed = []
         while node is not None:
             pos = (node.x, node.y)
@@ -84,10 +85,10 @@ class Agent:
             node = node.parent
 
         self.directions_to_goal_position = self.route_to_directions(self.current_position, direction,
-                                                                    reversed(route_reversed))
+                                                                    list(reversed(route_reversed)))
 
     def route_to_directions(self, current_position, direction, route):
-        directions = []
+        directions = [Move.STRAIGHT]
 
         for step in route:
             if direction == Direction.NORTH:
@@ -95,51 +96,56 @@ class Agent:
                     directions.append(Move.STRAIGHT)
                 elif step[0] == current_position[0] + 1:  # To Right
                     directions.append(Move.RIGHT)
+                    direction = Direction.EAST
                 elif step[0] == current_position[0] - 1:  # To LEFT
                     directions.append(Move.LEFT)
+                    direction = Direction.WEST
 
-            if direction == Direction.EAST:
+            elif direction == Direction.EAST:
                 if step[0] == current_position[0] + 1:  # Straight ahead
                     directions.append(Move.STRAIGHT)
                 elif step[1] == current_position[1] - 1:  # To Right
                     directions.append(Move.RIGHT)
+                    direction = Direction.SOUTH
                 elif step[1] == current_position[1] + 1:  # To Left
                     directions.append(Move.LEFT)
+                    direction = Direction.NORTH
 
-            if direction == Direction.SOUTH:
+            elif direction == Direction.SOUTH:
                 if step[1] == current_position[1] + 1:  # Straight ahead
                     directions.append(Move.STRAIGHT)
                 elif step[0] == current_position[0] - 1:  # To Right
-                    directions.append(Move.STRAIGHT)
+                    directions.append(Move.RIGHT)
+                    direction = Direction.WEST
                 elif step[0] == current_position[0] + 1:  # To Left
-                    directions.append(Move.STRAIGHT)
+                    directions.append(Move.LEFT)
+                    direction = Direction.EAST
 
-            if direction == Direction.WEST:
+            elif direction == Direction.WEST:
                 if step[0] == current_position[0] - 1:  # Straight ahead
                     directions.append(Move.STRAIGHT)
                 elif step[1] == current_position[1] - 1:  # To Right
-                    directions.append(Move.STRAIGHT)
+                    directions.append(Move.RIGHT)
+                    direction = Direction.NORTH
                 elif step[1] == current_position[1] + 1:  # To Left
-                    directions.append(Move.STRAIGHT)
+                    directions.append(Move.LEFT)
+                    direction = Direction.SOUTH
 
             current_position = step
 
-        print(f"Route: {route}")
-        print(f"Directions: {directions}")
-
         return directions
 
-    def a_star(self, board):
+    def a_star(self, board, start_position):
         open_list = []
         closed_list = []
 
-        open_list.append(SearchNode((self.current_position[0], self.current_position[1])))
+        open_list.append(SearchNode(start_position))
 
         while len(open_list) > 0:
             open_list = sorted(open_list, key=lambda node: node.f, reverse=True)
             search_node = open_list.pop()
 
-            print(f"Expand node: ({search_node.x}, {search_node.y}) f = {search_node.f}")
+            # print(f"Expand node: ({search_node.x}, {search_node.y}) f = {search_node.f}")
             for child in search_node.adjacent(board):
                 if child.x == self.current_goal_food.x and child.y == self.current_goal_food.y:
                     return child
@@ -176,6 +182,16 @@ class Agent:
         distance_y = abs(from_position[1] - to_position[1])
         return bias + math.sqrt((distance_x * distance_x) + (distance_y * distance_y))
 
+    def position_ahead_from_snake(self, direction, current_position):
+        if direction == Direction.NORTH:
+            return current_position[0], current_position[1] - 1
+        elif direction == Direction.EAST:
+            return current_position[0] + 1, current_position[1]
+        elif direction == Direction.SOUTH:
+            return current_position[0], current_position[1] + 1
+        elif direction == Direction.WEST:
+            return current_position[0] - 1, current_position[1]
+
     def scan_board(self, board):
         self.food_nodes = []
         self.current_position = (-1, -1)
@@ -190,7 +206,6 @@ class Agent:
                     self.food_nodes.append(self.FoodNode(x, y))
 
         self.current_goal_food = self.food_nodes[0]
-        print(f"Food nodes: {self.food_nodes}")
 
     class FoodNode:
         def __init__(self, x, y):
@@ -206,9 +221,6 @@ class SearchNode:
         self.g = 0
         self.h = 0
         self.f = 0
-
-    # def cost(self):
-    #     return self.g + self.h
 
     def adjacent(self, board):
         adjacent = []
