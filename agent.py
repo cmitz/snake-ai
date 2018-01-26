@@ -52,15 +52,9 @@ class Agent:
             return self.current_route.pop(0)
 
         self.scan_board(board)
+        self.current_route = self.calculate_route(self.current_position, self.current_goal, direction)
 
-        route = self.calculate_route(self.current_position, self.current_goal, direction)
-        print(f"Route: {route}")
-
-        f = self.field_adj(self.current_position, direction)
-        if f is None or f.game_object == GameObject.WALL:
-            return Move.RIGHT
-        else:
-            return Move.STRAIGHT
+        return self.current_route.pop(0)
 
     def on_die(self):
         """This function will be called whenever the snake dies. After its dead the snake will be reincarnated into a
@@ -90,11 +84,27 @@ class Agent:
         self.current_goal = food_positions[0]
 
     def calculate_route(self, current_position, goal, start_direction):
-        directions = []
+        moves = []
 
         route = self.a_star(current_position, goal, start_direction)
-        print(f"A* completed, no route found;")
-        return route
+        print(f"Route: {route}")
+
+        route_elements = [route.position]
+        while route.parent is not None:
+            route_elements.append(route.parent.position)
+            route = route.parent
+
+        temp_position = current_position
+        temp_direction = start_direction
+        for next_position in list(reversed(route_elements)):
+            move = self.move_from_steps(temp_position, next_position, temp_direction)
+
+            temp_position = next_position
+            temp_direction = Direction((temp_direction.value + move.value) % 4)
+
+            moves.append(move)
+
+        return moves
 
     def a_star(self, current_position, goal, start_direction):
         open_list = []
@@ -136,6 +146,7 @@ class Agent:
                         open_list.append(child_node)
 
             closed_list.append(current_node)
+        print(f"A* completed, no route found;")
 
     def calculate_heuristic(self, position, goal):
         bias = 0
@@ -170,6 +181,15 @@ class Agent:
 
         if 0 <= px < len(self.board) and 0 <= py < len(self.board[0]):
             return Field(adj, self.board[adj[0]][adj[1]])
+
+    @staticmethod
+    def move_from_steps(current_position, next_position, current_direction):
+        if Agent.calculate_distance(current_position, next_position) != 1:
+            print(f"Shit's fucked UP yo! c:{current_position} n:{next_position}")
+
+        for move in Move:
+            if Agent.pos_adj(current_position, Direction((current_direction.value + move.value) % 4)) == next_position:
+                return move
 
     @staticmethod
     def blocked_field(game_object):
@@ -207,4 +227,4 @@ class SearchNode:
         return self.g + self.heuristic
 
     def __str__(self):
-        return f"N{self.position} -> {self.parent}"
+        return f"N{self.position} <- {self.parent}"
