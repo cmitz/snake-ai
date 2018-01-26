@@ -86,29 +86,23 @@ class Agent:
     def calculate_route(self, current_position, goal, start_direction):
         moves = []
 
-        child = self.a_star(current_position, goal, start_direction)
-        print(f"Route: {child}")
+        route = self.a_star(current_position, goal, start_direction)
+        print(f"Route: {route}")
 
-        route_elements = [child.position]
-        while child.parent is not None:
-            route_elements.append(child.parent.position)
-            child = child.parent
-
-        route_elements = list(reversed(route_elements))
-        print(f"El: {route_elements}")
+        route_elements = [route.position]
+        while route.parent is not None:
+            route_elements.append(route.parent.position)
+            route = route.parent
 
         temp_position = current_position
         temp_direction = start_direction
-        for next_position in route_elements:
+        for next_position in list(reversed(route_elements)):
             move = self.move_from_steps(temp_position, next_position, temp_direction)
 
-            if move is not None:
-                temp_position = next_position
-                temp_direction = Direction((temp_direction.value + move.value) % 4)
+            temp_position = next_position
+            temp_direction = Direction((temp_direction.value + move.value) % 4)
 
-                moves.append(move)
-
-        print(f"{moves}")
+            moves.append(move)
 
         return moves
 
@@ -117,7 +111,8 @@ class Agent:
         closed_list = []
         nodes_expanded = 0
 
-        open_list.append(SearchNode(current_position, None, GameObject.SNAKE_HEAD))
+        pos = self.pos_adj(current_position, start_direction)
+        open_list.append(SearchNode(pos, None, self.game_object_at(pos)))
 
         print(f"Stats: start={current_position}, goal={goal}, start_direction={start_direction}")
 
@@ -151,7 +146,7 @@ class Agent:
                         open_list.append(child_node)
 
             closed_list.append(current_node)
-        print(f"A* completed, no route found but {nodes_expanded} nodes expanded;")
+        print(f"A* completed, no route found;")
 
     def calculate_heuristic(self, position, goal):
         bias = 0
@@ -191,7 +186,6 @@ class Agent:
     def move_from_steps(current_position, next_position, current_direction):
         if Agent.calculate_distance(current_position, next_position) != 1:
             print(f"Shit's fucked UP yo! c:{current_position} n:{next_position}")
-            return None
 
         for move in Move:
             if Agent.pos_adj(current_position, Direction((current_direction.value + move.value) % 4)) == next_position:
@@ -199,7 +193,8 @@ class Agent:
 
     @staticmethod
     def blocked_field(game_object):
-        if game_object == GameObject.SNAKE_BODY \
+        if game_object == GameObject.SNAKE_HEAD \
+                or game_object == GameObject.SNAKE_BODY \
                 or game_object == GameObject.WALL:
             return True
 
