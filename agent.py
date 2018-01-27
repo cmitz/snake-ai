@@ -5,9 +5,9 @@ import math
 
 bias_g_weight = 10
 bias_snake_body = 1000000
-bias_snake_body_adjacent = -8
+bias_snake_body_adjacent = -20
 bias_less_corners = -10
-bias_wall_adjacent = -5
+bias_wall_adjacent = -25
 
 
 class Agent:
@@ -65,6 +65,10 @@ class Agent:
         if len(self.current_route) > 0:
             return self.current_route.pop(0)
         else:
+            for move in Move:
+                pos = self.next_position(self.current_position, self.move_from_direction(direction, move))
+                if not self.blocked_field(self.game_object_at(pos)):
+                    return move
             return Move.STRAIGHT
 
     def on_die(self):
@@ -129,7 +133,6 @@ class Agent:
 
                 moves.append(move)
 
-        print(f"Route cost: {total_cost}")
         return moves
 
     def a_star(self, current_position, goal, start_direction):
@@ -137,8 +140,8 @@ class Agent:
         closed_list = []
         nodes_expanded = 0
 
-        open_list.append(
-            SearchNode(current_position, None, self.game_object_at(self.board, current_position), start_direction))
+        first_node = SearchNode(current_position, None, self.game_object_at(current_position), start_direction)
+        open_list.append(first_node)
 
         while len(open_list) > 0:
             open_list = sorted(open_list, key=lambda node: node.cost())
@@ -178,6 +181,7 @@ class Agent:
         if game_object == GameObject.SNAKE_HEAD \
                 or game_object == GameObject.SNAKE_BODY \
                 or game_object == GameObject.WALL:
+            print(f"What the hell dude, thats a wall! {child_node.position}")
             bias += bias_snake_body
 
         adjacent_nodes = self.adjacent_nodes(child_node)
@@ -200,6 +204,14 @@ class Agent:
 
         return filter(None, fields)
 
+    def game_object_at(self, position):
+        px = position[0]
+        py = position[1]
+        if 0 <= px < len(self.board) and 0 <= py < len(self.board[0]):
+            return self.board[px][py]
+        else:
+            return GameObject.WALL
+
     def adjacent_node(self, current_position, direction, parent):
         position = Agent.next_position(current_position, direction)
         px = position[0]
@@ -215,11 +227,11 @@ class Agent:
 
         for move in Move:
             if Agent.next_position(current_position,
-                                   Agent.direction_from_move(current_direction, move)) == next_position:
+                                   Agent.move_from_direction(current_direction, move)) == next_position:
                 return move
 
     @staticmethod
-    def direction_from_move(direction, move):
+    def move_from_direction(direction, move):
         return Direction((direction.value + move.value) % 4)
 
     @staticmethod
@@ -238,15 +250,6 @@ class Agent:
                 or game_object == GameObject.SNAKE_BODY \
                 or game_object == GameObject.WALL:
             return True
-
-    @staticmethod
-    def game_object_at(board, position):
-        px = position[0]
-        py = position[1]
-        if 0 <= px < len(board) and 0 <= py < len(board[0]):
-            return board[px][py]
-        else:
-            return GameObject.WALL
 
 
 class SearchNode:
