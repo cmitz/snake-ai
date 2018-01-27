@@ -140,7 +140,6 @@ class Agent:
 
             nodes_expanded += 1
 
-            # if not self.blocked_field(current_node.game_object):
             for child_node in self.adjacent_nodes(current_node):
                 child_node = SearchNode(child_node.position, current_node, child_node
                                         .game_object, child_node.direction)
@@ -149,7 +148,7 @@ class Agent:
                     return child_node
 
                 child_node.g = child_node.parent.g + 1
-                child_node.heuristic = self.calculate_heuristic(current_node.position, child_node.position, goal)
+                child_node.heuristic = self.calculate_heuristic(child_node, goal)
 
                 skip = False
                 for existing in open_list:
@@ -164,17 +163,22 @@ class Agent:
                     open_list.append(child_node)
 
             closed_list.append(current_node)
+
         print(f"A* completed, no route found;")
 
-    def calculate_heuristic(self, previous_position, position, goal):
+    def calculate_heuristic(self, child_node, goal):
         bias = 0
-        game_object = self.board[position[0]][position[1]]
+        game_object = self.board[child_node.position[0]][child_node.position[1]]
         if game_object == GameObject.SNAKE_HEAD \
                 or game_object == GameObject.SNAKE_BODY \
                 or game_object == GameObject.WALL:
-            bias += 99
+            bias += 999999
 
-        return bias + Agent.calculate_distance(position, goal)
+        for node in self.adjacent_nodes(child_node):
+            if node.game_object == GameObject.SNAKE_BODY:
+                bias -= 20
+
+        return bias + Agent.calculate_distance(child_node.position, goal)
 
     def adjacent_nodes(self, search_node):
         p = search_node.position
@@ -248,7 +252,7 @@ class SearchNode:
         self.game_object = game_object
         self.direction = direction
 
-        self.g_weight = 5
+        self.g_weight = 10
 
     def cost(self):
         return (self.g_weight * self.g) + self.heuristic
