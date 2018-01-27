@@ -48,11 +48,20 @@ class Agent:
         Move.LEFT and Move.RIGHT changes the direction of the snake. In example, if the snake is facing north and the
         move left is made, the snake will go one block to the left and change its direction to west.
         """
-        if len(self.current_route) > 0:
-            return self.current_route.pop(0)
+        initial_step = None
 
-        self.scan_board(board)
-        self.current_route = self.calculate_route(self.current_position, self.current_goal, direction)
+        if len(self.current_route) > 1:
+            return self.current_route.pop(0)
+        elif len(self.current_route) == 1:
+            self.current_goal = self.scan_board(board)[1]
+            next_position = Agent.next_position(self.current_position,
+                                                Direction((direction.value + self.current_route[0].value) % 4))
+            initial_step = SearchNode(next_position, None, self.game_object_at(next_position))
+            print(f"Init step: {initial_step}, current: {self.current_position}")
+        else:
+            self.current_goal = self.scan_board(board)[0]
+
+        self.current_route = self.calculate_route(self.current_position, self.current_goal, direction, initial_step)
 
         return self.current_route.pop(0)
 
@@ -81,12 +90,12 @@ class Agent:
                     food_positions.append((x, y))
 
         food_positions = sorted(food_positions, key=lambda f: self.calculate_distance(f, self.current_position))
-        self.current_goal = food_positions[0]
+        return food_positions
 
-    def calculate_route(self, current_position, goal, start_direction):
+    def calculate_route(self, current_position, goal, start_direction, initial_step):
         moves = []
 
-        route = self.a_star(current_position, goal, start_direction)
+        route = self.a_star(current_position, goal, start_direction, initial_step)
         print(f"Route: {route}")
 
         route_elements = [route.position]
@@ -106,13 +115,15 @@ class Agent:
 
         return moves
 
-    def a_star(self, current_position, goal, start_direction):
+    def a_star(self, current_position, goal, start_direction, initial_step=None):
         open_list = []
         closed_list = []
         nodes_expanded = 0
 
-        pos = self.pos_adj(current_position, start_direction)
-        open_list.append(SearchNode(pos, None, self.game_object_at(pos)))
+        if initial_step is None:
+            pos = self.next_position(current_position, start_direction)
+            initial_step = SearchNode(pos, None, self.game_object_at(pos))
+        open_list.append(initial_step)
 
         print(f"Stats: start={current_position}, goal={goal}, start_direction={start_direction}")
 
@@ -175,7 +186,7 @@ class Agent:
         return filter(None, fields)
 
     def field_adj(self, current_position, direction):
-        adj = Agent.pos_adj(current_position, direction)
+        adj = Agent.next_position(current_position, direction)
         px = adj[0]
         py = adj[1]
 
@@ -188,7 +199,7 @@ class Agent:
             print(f"Shit's fucked UP yo! c:{current_position} n:{next_position}")
 
         for move in Move:
-            if Agent.pos_adj(current_position, Direction((current_direction.value + move.value) % 4)) == next_position:
+            if Agent.next_position(current_position, Direction((current_direction.value + move.value) % 4)) == next_position:
                 return move
 
     @staticmethod
@@ -205,7 +216,7 @@ class Agent:
         return math.sqrt(dx * dx + dy * dy)
 
     @staticmethod
-    def pos_adj(current_position, direction):
+    def next_position(current_position, direction):
         return tuple(map(lambda a, b: a + b, current_position, Direction.get_xy_manipulation(direction)))
 
 
