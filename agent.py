@@ -8,6 +8,7 @@ class Agent:
 
     def __init__(self):
         self.current_position = None
+        self.food_positions = []
         self.current_goal = None
         self.current_route = []
         self.board_size = (0, 0)
@@ -48,22 +49,17 @@ class Agent:
         Move.LEFT and Move.RIGHT changes the direction of the snake. In example, if the snake is facing north and the
         move left is made, the snake will go one block to the left and change its direction to west.
         """
-        initial_step = None
 
-        if len(self.current_route) > 1:
+        if len(self.current_route) > 0:
             return self.current_route.pop(0)
-        elif len(self.current_route) == 1:
-            self.current_goal = self.scan_board(board)[1]
-            next_position = Agent.next_position(self.current_position,
-                                                Direction((direction.value + self.current_route[0].value) % 4))
-            initial_step = SearchNode(next_position, None, self.game_object_at(next_position))
-            print(f"Init step: {initial_step}, current: {self.current_position}")
+
+        self.current_goal = self.scan_board(board)[0]
+        self.current_route = self.calculate_route(self.current_position, self.current_goal, direction)
+
+        if len(self.current_route) > 0:
+            return self.current_route.pop(0)
         else:
-            self.current_goal = self.scan_board(board)[0]
-
-        self.current_route = self.calculate_route(self.current_position, self.current_goal, direction, initial_step)
-
-        return self.current_route.pop(0)
+            return Move.STRAIGHT
 
     def on_die(self):
         """This function will be called whenever the snake dies. After its dead the snake will be reincarnated into a
@@ -71,13 +67,17 @@ class Agent:
         it will be called for a fresh snake. Use this function to clean up variables specific to the life of a single
         snake or to host a funeral.
         """
-        pass
+        self.current_position = None
+        self.food_positions = []
+        self.current_goal = None
+        self.current_route = []
+        self.board_size = (0, 0)
+        self.board = None
 
     def scan_board(self, board):
         self.board_size = (len(board), len(board[0]))
         self.board = board
-
-        food_positions = []
+        self.food_positions = []
 
         for x in range(self.board_size[0]):
             for y in range(self.board_size[1]):
@@ -87,15 +87,24 @@ class Agent:
                     self.current_position = (x, y)
 
                 elif game_obj == GameObject.FOOD:
-                    food_positions.append((x, y))
+                    self.food_positions.append((x, y))
 
-        food_positions = sorted(food_positions, key=lambda f: self.calculate_distance(f, self.current_position))
-        return food_positions
+        self.food_positions = sorted(self.food_positions, key=lambda f: self.calculate_distance(f, self.current_position))
+        return self.food_positions
 
-    def calculate_route(self, current_position, goal, start_direction, initial_step):
+    def calculate_route(self, current_position, goal, start_direction):
         moves = []
 
-        route = self.a_star(current_position, goal, start_direction, initial_step)
+        route = self.a_star(current_position, goal, start_direction)
+
+        while route is None:
+            self.food_positions.remove(goal)
+            print(f"Setting new goal; fs:{self.food_positions}")
+            if len(self.food_positions) == 0:
+                return []
+
+            route = self.a_star(current_position, self.food_positions[0], start_direction)
+
         print(f"Route: {route}")
 
         route_elements = [route.position]
@@ -104,28 +113,26 @@ class Agent:
             route = route.parent
 
         temp_position = current_position
-        temp_direction = start_direction
+        last_direction = start_direction
         for next_position in list(reversed(route_elements)):
-            move = self.move_from_steps(temp_position, next_position, temp_direction)
+            if next_position != temp_position:
+                move = self.move_from_steps(temp_position, next_position, last_direction)
 
-            temp_position = next_position
-            temp_direction = Direction((temp_direction.value + move.value) % 4)
+                last_direction = Direction((last_direction.value + move.value) % 4)
+                temp_position = next_position
 
-            moves.append(move)
+                moves.append(move)
 
         return moves
 
-    def a_star(self, current_position, goal, start_direction, initial_step=None):
+    def a_star(self, current_position, goal, start_direction):
         open_list = []
         closed_list = []
         nodes_expanded = 0
 
-        if initial_step is None:
-            pos = self.next_position(current_position, start_direction)
-            initial_step = SearchNode(pos, None, self.game_object_at(pos))
-        open_list.append(initial_step)
+        open_list.append(SearchNode(current_position, None, self.game_object_at(self.board, current_position), start_direction))
 
-        print(f"Stats: start={current_position}, goal={goal}, start_direction={start_direction}")
+        print(f"A*: start={current_position}, goal={goal}, start_direction={start_direction}")
 
         while len(open_list) > 0:
             open_list = sorted(open_list, key=lambda node: node.cost())
@@ -133,33 +140,33 @@ class Agent:
 
             nodes_expanded += 1
 
-            if not self.blocked_field(current_node.game_object):
-                for child_node in self.adjacent_nodes(current_node):
-                    child_node = SearchNode(child_node.position, current_node, child_node
-                                            .game_object)
+            # if not self.blocked_field(current_node.game_object):
+            for child_node in self.adjacent_nodes(current_node):
+                child_node = SearchNode(child_node.position, current_node, child_node
+                                        .game_object, child_node.direction)
 
-                    if child_node.position == goal:
-                        return child_node
+                if child_node.position == goal:
+                    return child_node
 
-                    child_node.g = child_node.parent.g + 1
-                    child_node.heuristic = self.calculate_heuristic(child_node.position, goal)
+                child_node.g = child_node.parent.g + 1
+                child_node.heuristic = self.calculate_heuristic(current_node.position, child_node.position, goal)
 
-                    skip = False
-                    for existing in open_list:
-                        if existing.position == child_node.position \
-                                and existing.cost() <= child_node.cost():
-                            skip = True
-                    for existing in closed_list:
-                        if existing.position == child_node.position \
-                                and existing.cost() <= child_node.cost():
-                            skip = True
-                    if not skip:
-                        open_list.append(child_node)
+                skip = False
+                for existing in open_list:
+                    if existing.position == child_node.position \
+                            and existing.cost() <= child_node.cost():
+                        skip = True
+                for existing in closed_list:
+                    if existing.position == child_node.position \
+                            and existing.cost() <= child_node.cost():
+                        skip = True
+                if not skip:
+                    open_list.append(child_node)
 
             closed_list.append(current_node)
         print(f"A* completed, no route found;")
 
-    def calculate_heuristic(self, position, goal):
+    def calculate_heuristic(self, previous_position, position, goal):
         bias = 0
         game_object = self.board[position[0]][position[1]]
         if game_object == GameObject.SNAKE_HEAD \
@@ -169,29 +176,21 @@ class Agent:
 
         return bias + Agent.calculate_distance(position, goal)
 
-    def game_object_at(self, position):
-        px = position[0]
-        py = position[1]
-        if 0 <= px < len(self.board) and 0 <= py < len(self.board[0]):
-            return self.board[px][py]
-        else:
-            return GameObject.WALL
-
     def adjacent_nodes(self, search_node):
         p = search_node.position
         fields = []
-        for i in range(4):
-            fields.append(self.field_adj(p, Direction(i % 4)))
+        for i in range(3):
+            fields.append(self.adjacent_node(p, Direction((search_node.direction.value - 1 + i) % 4), search_node))
 
         return filter(None, fields)
 
-    def field_adj(self, current_position, direction):
-        adj = Agent.next_position(current_position, direction)
-        px = adj[0]
-        py = adj[1]
+    def adjacent_node(self, current_position, direction, parent):
+        position = Agent.next_position(current_position, direction)
+        px = position[0]
+        py = position[1]
 
         if 0 <= px < len(self.board) and 0 <= py < len(self.board[0]):
-            return Field(adj, self.board[adj[0]][adj[1]])
+            return SearchNode(position, parent, self.board[px][py], direction)
 
     @staticmethod
     def move_from_steps(current_position, next_position, current_direction):
@@ -199,15 +198,12 @@ class Agent:
             print(f"Shit's fucked UP yo! c:{current_position} n:{next_position}")
 
         for move in Move:
-            if Agent.next_position(current_position, Direction((current_direction.value + move.value) % 4)) == next_position:
+            if Agent.next_position(current_position, Agent.direction_from_move(current_direction, move)) == next_position:
                 return move
 
     @staticmethod
-    def blocked_field(game_object):
-        if game_object == GameObject.SNAKE_HEAD \
-                or game_object == GameObject.SNAKE_BODY \
-                or game_object == GameObject.WALL:
-            return True
+    def direction_from_move(direction, move):
+        return Direction((direction.value + move.value) % 4)
 
     @staticmethod
     def calculate_distance(position1, position2):
@@ -219,23 +215,43 @@ class Agent:
     def next_position(current_position, direction):
         return tuple(map(lambda a, b: a + b, current_position, Direction.get_xy_manipulation(direction)))
 
+    @staticmethod
+    def blocked_field(game_object):
+        if game_object == GameObject.SNAKE_HEAD \
+                or game_object == GameObject.SNAKE_BODY \
+                or game_object == GameObject.WALL:
+            return True
+
+    @staticmethod
+    def game_object_at(board, position):
+        px = position[0]
+        py = position[1]
+        if 0 <= px < len(board) and 0 <= py < len(board[0]):
+            return board[px][py]
+        else:
+            return GameObject.WALL
+
 
 class Field:
-    def __init__(self, position, game_object):
+    def __init__(self, position, game_object, direction):
         self.position = position
         self.game_object = game_object
+        self.direction = direction
 
 
 class SearchNode:
-    def __init__(self, position, parent, game_object):
+    def __init__(self, position, parent, game_object, direction):
         self.position = position
         self.g = 0
         self.heuristic = 0
         self.parent = parent
         self.game_object = game_object
+        self.direction = direction
+
+        self.g_weight = 5
 
     def cost(self):
-        return self.g + self.heuristic
+        return (self.g_weight * self.g) + self.heuristic
 
     def __str__(self):
         return f"N{self.position} <- {self.parent}"
