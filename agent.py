@@ -3,6 +3,12 @@ from move import Move, Direction
 
 import math
 
+bias_g_weight = 10
+bias_snake_body = 1000000
+bias_snake_body_adjacent = -8
+bias_less_corners = -10
+bias_wall_adjacent = -5
+
 
 class Agent:
 
@@ -89,28 +95,28 @@ class Agent:
                 elif game_obj == GameObject.FOOD:
                     self.food_positions.append((x, y))
 
-        self.food_positions = sorted(self.food_positions, key=lambda f: self.calculate_distance(f, self.current_position))
+        self.food_positions = sorted(self.food_positions,
+                                     key=lambda f: self.calculate_distance(f, self.current_position))
         return self.food_positions
 
     def calculate_route(self, current_position, goal, start_direction):
         moves = []
 
         route = self.a_star(current_position, goal, start_direction)
-
-        while route is None:
-            self.food_positions.remove(goal)
-            print(f"Setting new goal; fs:{self.food_positions}")
-            if len(self.food_positions) == 0:
-                return []
-
-            route = self.a_star(current_position, self.food_positions[0], start_direction)
-
-        print(f"Route: {route}")
+        total_cost = 0
 
         route_elements = [route.position]
         while route.parent is not None:
-            route_elements.append(route.parent.position)
             route = route.parent
+
+            route_elements.append(route.position)
+            total_cost += route.cost()
+
+        if total_cost > 1000000:
+            self.food_positions.remove(goal)
+            if len(self.food_positions) == 0:
+                return []
+            return self.calculate_route(current_position, self.food_positions[0], start_direction)
 
         temp_position = current_position
         last_direction = start_direction
@@ -123,6 +129,7 @@ class Agent:
 
                 moves.append(move)
 
+        print(f"Route cost: {total_cost}")
         return moves
 
     def a_star(self, current_position, goal, start_direction):
@@ -130,9 +137,8 @@ class Agent:
         closed_list = []
         nodes_expanded = 0
 
-        open_list.append(SearchNode(current_position, None, self.game_object_at(self.board, current_position), start_direction))
-
-        print(f"A*: start={current_position}, goal={goal}, start_direction={start_direction}")
+        open_list.append(
+            SearchNode(current_position, None, self.game_object_at(self.board, current_position), start_direction))
 
         while len(open_list) > 0:
             open_list = sorted(open_list, key=lambda node: node.cost())
@@ -168,15 +174,21 @@ class Agent:
 
     def calculate_heuristic(self, child_node, goal):
         bias = 0
-        game_object = self.board[child_node.position[0]][child_node.position[1]]
+        game_object = child_node.game_object
         if game_object == GameObject.SNAKE_HEAD \
                 or game_object == GameObject.SNAKE_BODY \
                 or game_object == GameObject.WALL:
-            bias += 999999
+            bias += bias_snake_body
 
-        for node in self.adjacent_nodes(child_node):
+        adjacent_nodes = self.adjacent_nodes(child_node)
+        for node in adjacent_nodes:
             if node.game_object == GameObject.SNAKE_BODY:
-                bias -= 20
+                bias += bias_snake_body_adjacent
+            elif node.game_object == GameObject.WALL:
+                bias += bias_wall_adjacent
+
+            if child_node.parent is not None and child_node.parent.direction == child_node.direction:
+                bias += bias_less_corners
 
         return bias + Agent.calculate_distance(child_node.position, goal)
 
@@ -202,7 +214,8 @@ class Agent:
             print(f"Shit's fucked UP yo! c:{current_position} n:{next_position}")
 
         for move in Move:
-            if Agent.next_position(current_position, Agent.direction_from_move(current_direction, move)) == next_position:
+            if Agent.next_position(current_position,
+                                   Agent.direction_from_move(current_direction, move)) == next_position:
                 return move
 
     @staticmethod
@@ -236,13 +249,6 @@ class Agent:
             return GameObject.WALL
 
 
-class Field:
-    def __init__(self, position, game_object, direction):
-        self.position = position
-        self.game_object = game_object
-        self.direction = direction
-
-
 class SearchNode:
     def __init__(self, position, parent, game_object, direction):
         self.position = position
@@ -252,10 +258,8 @@ class SearchNode:
         self.game_object = game_object
         self.direction = direction
 
-        self.g_weight = 10
-
     def cost(self):
-        return (self.g_weight * self.g) + self.heuristic
+        return math.floor((bias_g_weight * self.g) + self.heuristic)
 
     def __str__(self):
-        return f"N{self.position} <- {self.parent}"
+        return f"N{self.position}/{self.cost()} <- {self.parent}"
