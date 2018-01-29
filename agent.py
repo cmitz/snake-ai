@@ -4,9 +4,8 @@ from move import Move, Direction
 import math
 
 bias_g_weight = 5
-bias_snake_body = 1000000
 bias_snake_body_adjacent = -20
-bias_less_corners = -2
+bias_less_corners = -5
 bias_wall_adjacent = -2
 
 
@@ -24,8 +23,8 @@ class Agent:
         if len(self.current_route) > 0:
             return self.current_route.pop(0)
 
-        self.current_goal = self.scan_board(board)[0]
-        self.current_route = self.calculate_route(self.current_position, self.current_goal, direction)
+        self.scan_board(board)
+        self.current_route = self.calculate_route(self.current_position, direction)
 
         if len(self.current_route) > 0:
             return self.current_route.pop(0)
@@ -59,31 +58,22 @@ class Agent:
                 elif game_obj == GameObject.FOOD:
                     self.food_positions.append((x, y))
 
-        self.food_positions = sorted(self.food_positions,
-                                     key=lambda f: self.calculate_distance(f, self.current_position))
         return self.food_positions
 
-    def calculate_route(self, current_position, goal, start_direction):
+    def calculate_route(self, current_position, start_direction):
         moves = []
 
-        route = self.a_star(current_position, goal, start_direction)
-        total_cost = 0
+        route_elements = []
+        total_cost = None
+        for food in self.food_positions:
+            res = self.a_star(current_position, food, start_direction)
 
-        if route is None:
-            return []
-
-        route_elements = [route.position]
-        while route.parent is not None:
-            route = route.parent
-
-            route_elements.append(route.position)
-            total_cost += route.cost()
-
-        if total_cost > 1000000:
-            self.food_positions.remove(goal)
-            if len(self.food_positions) == 0:
+            if res is None:
                 return []
-            return self.calculate_route(current_position, self.food_positions[0], start_direction)
+            r, t = self.flatten_path(res)
+            if total_cost is None or t < total_cost:
+                total_cost = t
+                route_elements = r
 
         temp_position = current_position
         last_direction = start_direction
@@ -97,6 +87,16 @@ class Agent:
                 moves.append(move)
 
         return moves
+
+    def flatten_path(self, route):
+        total_cost = 0
+        route_elements = [route.position]
+        while route.parent is not None:
+            route = route.parent
+
+            route_elements.append(route.position)
+            total_cost += route.cost()
+        return route_elements, total_cost
 
     def a_star(self, current_position, goal, start_direction):
         open_list = []
@@ -140,12 +140,6 @@ class Agent:
 
     def calculate_heuristic(self, child_node, goal):
         bias = 0
-        game_object = child_node.game_object
-        if game_object == GameObject.SNAKE_HEAD \
-                or game_object == GameObject.SNAKE_BODY \
-                or game_object == GameObject.WALL:
-            print(f"What the hell dude, that's a wall! {child_node.position}")
-            bias += bias_snake_body
 
         adjacent_nodes = self.adjacent_nodes(child_node)
         for node in adjacent_nodes:
